@@ -1324,7 +1324,7 @@ const App = (() => {
     // Transactions
     createTransaction, createTransactionOnly, createPaymentOnly,
     // Quick
-    showQuickLaunch, updateQuickWaPreview, submitQuickLaunch,
+    showQuickLaunch, openPurchaseFromDashboard, updateQuickWaPreview, submitQuickLaunch,
     // WA
     openWhatsAppCustomer, sendWhatsAppConfirmation, sendWhatsAppBalance,
     sendWhatsAppLink, sendWhatsAppReminder,
