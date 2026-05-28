@@ -513,7 +513,7 @@ const App = (() => {
 
     showLoading('Adicionando cliente...');
     const { data: c, error } = await dbCreateCustomer(S.merchant.id, name, phone, limitTotal, limitVis);
-    if (error) { hideLoading(); toast('❌ Erro ao criar cliente', 'error'); return; }
+    if (error) { hideLoading(); toast('❌ ' + (error.message || 'Erro ao criar cliente'), 'error'); return; }
 
     // Busca ledger via Supabase (funciona em demo E produção)
     const { data: l } = await dbGetLedger(S.merchant.id, c.id);
