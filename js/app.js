@@ -325,13 +325,15 @@ const App = (() => {
     const text = document.getElementById('picker-found-text');
     if (!list) return;
 
-    // Única fonte de verdade — salva antes de qualquer render
     S.merchantPickerResults = results;
 
     if (text) text.textContent = results.length > 1
       ? `Encontramos sua pendura em ${results.length} comércios`
       : 'Encontramos sua pendura!';
 
+    // Renderiza os cards com botões nativos — não divs clicáveis.
+    // Botão <button> recebe touch/click corretamente mesmo dentro de
+    // scroll-area com overflow:auto no mobile (div não recebe em alguns casos).
     list.innerHTML = results.map(({ customer, merchant, ledger }, idx) => {
       const profile  = MerchantProfile.load(merchant?.id) ||
                        MerchantProfile.createFromMerchant(merchant || {});
@@ -343,41 +345,40 @@ const App = (() => {
                      : fmt(balance);
       const initials = mName.split(' ').map(w => w[0]).join('').slice(0,2).toUpperCase();
 
-      // Apenas data-attributes — sem onclick inline, sem JSON
-      return `<div class="merchant-picker-card"
-                   data-picker-idx="${idx}"
-                   data-customer-id="${customer.id}"
-                   data-merchant-id="${merchant?.id || ''}"
-                   data-ledger-id="${ledger?.id || ''}">
+      // <button> em vez de <div> — garante eventos touch/click no mobile
+      return `<button type="button" class="merchant-picker-card"
+                      data-picker-idx="${idx}"
+                      style="width:100%;text-align:left;background:var(--surface);
+                             border:1px solid var(--glass-border);border-radius:var(--r);
+                             padding:1rem;display:flex;align-items:center;gap:0.85rem;
+                             cursor:pointer;margin-bottom:0.5rem;">
         <div class="mpc-avatar">${initials}</div>
-        <div class="mpc-info">
-          <h4>${mName}</h4>
-          <p>${customer.name}</p>
+        <div class="mpc-info" style="flex:1">
+          <h4 style="font-size:0.95rem;font-weight:600;color:var(--text-1)">${mName}</h4>
+          <p style="font-size:0.75rem;color:var(--text-2);margin-top:0.15rem">${customer.name}</p>
         </div>
-        <div class="mpc-balance ${balClass}">${balText}</div>
-      </div>`;
+        <div class="mpc-balance ${balClass}" style="font-family:var(--font-display);font-size:1rem;font-weight:700;flex-shrink:0">${balText}</div>
+      </button>`;
     }).join('');
 
-    // Event delegation no container — imune a reflow/showScreen
-    // Remove listener antigo clonando o nó (garante listener único)
-    const newList = list.cloneNode(true);
-    list.parentNode.replaceChild(newList, list);
-    newList.addEventListener('click', async (e) => {
-      const card = e.target.closest('.merchant-picker-card');
-      if (!card) return;
-      const idx  = parseInt(card.dataset.pickerIdx, 10);
-      const item = S.merchantPickerResults[idx];
-      console.log('[Pendura] PICKER CLICK idx=', idx, 'item=', item);
-      if (!item) { toast('❌ Pendura não encontrada', 'error'); return; }
-      toast('⏳ Abrindo pendura...', 'default');
-      showLoading('Carregando...');
-      try {
-        await _enterCustomer(item.customer, item.merchant, item.ledger);
-      } catch (err) {
-        console.error('[Pendura] picker _enterCustomer:', err);
-        hideLoading();
-        toast('❌ ' + (err.message || 'Erro ao abrir pendura'), 'error');
-      }
+    // Listener nos próprios botões — <button> não tem problema de touch no mobile
+    list.querySelectorAll('.merchant-picker-card').forEach(btn => {
+      btn.addEventListener('click', async function() {
+        const idx  = parseInt(this.dataset.pickerIdx, 10);
+        const item = S.merchantPickerResults[idx];
+        console.log('[Pendura] picker tap idx=', idx, item?.merchant?.name);
+        if (!item) { toast('❌ Pendura não encontrada', 'error'); return; }
+        this.disabled = true;
+        showLoading('Carregando...');
+        try {
+          await _enterCustomer(item.customer, item.merchant, item.ledger);
+        } catch (err) {
+          console.error('[Pendura] picker:', err);
+          hideLoading();
+          this.disabled = false;
+          toast('❌ ' + (err.message || 'Erro'), 'error');
+        }
+      });
     });
 
     showScreen('merchant-picker');
