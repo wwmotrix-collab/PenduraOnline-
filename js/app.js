@@ -325,7 +325,7 @@ const App = (() => {
     const text = document.getElementById('picker-found-text');
     if (!list) return;
 
-    // Salva resultados no estado (única fonte de verdade)
+    // Única fonte de verdade — salva antes de qualquer render
     S.merchantPickerResults = results;
 
     if (text) text.textContent = results.length > 1
@@ -343,8 +343,12 @@ const App = (() => {
                      : fmt(balance);
       const initials = mName.split(' ').map(w => w[0]).join('').slice(0,2).toUpperCase();
 
-      // FIX: passa apenas o índice numérico, sem JSON serializado
-      return `<div class="merchant-picker-card" data-picker-idx="${idx}" style="cursor:pointer">
+      // Apenas data-attributes — sem onclick inline, sem JSON
+      return `<div class="merchant-picker-card"
+                   data-picker-idx="${idx}"
+                   data-customer-id="${customer.id}"
+                   data-merchant-id="${merchant?.id || ''}"
+                   data-ledger-id="${ledger?.id || ''}">
         <div class="mpc-avatar">${initials}</div>
         <div class="mpc-info">
           <h4>${mName}</h4>
@@ -354,30 +358,40 @@ const App = (() => {
       </div>`;
     }).join('');
 
-    // FIX: event listeners adicionados DEPOIS do innerHTML, usando dataset
-    list.querySelectorAll('.merchant-picker-card').forEach(el => {
-      el.addEventListener('click', () => {
-        const idx = parseInt(el.dataset.pickerIdx, 10);
-        pickMerchantByIndex(idx);
-      });
+    // Event delegation no container — imune a reflow/showScreen
+    // Remove listener antigo clonando o nó (garante listener único)
+    const newList = list.cloneNode(true);
+    list.parentNode.replaceChild(newList, list);
+    newList.addEventListener('click', async (e) => {
+      const card = e.target.closest('.merchant-picker-card');
+      if (!card) return;
+      const idx  = parseInt(card.dataset.pickerIdx, 10);
+      const item = S.merchantPickerResults[idx];
+      console.log('[Pendura] PICKER CLICK idx=', idx, 'item=', item);
+      if (!item) { toast('❌ Pendura não encontrada', 'error'); return; }
+      toast('⏳ Abrindo pendura...', 'default');
+      showLoading('Carregando...');
+      try {
+        await _enterCustomer(item.customer, item.merchant, item.ledger);
+      } catch (err) {
+        console.error('[Pendura] picker _enterCustomer:', err);
+        hideLoading();
+        toast('❌ ' + (err.message || 'Erro ao abrir pendura'), 'error');
+      }
     });
 
     showScreen('merchant-picker');
   }
 
-  // FIX: definição única de pickMerchantByIndex
+  // Exposta apenas para compatibilidade — internamente o picker usa delegation
   async function pickMerchantByIndex(index) {
-    const list = S.merchantPickerResults;
-    const item = list[index];
-    if (!item) {
-      toast('❌ Pendura não encontrada', 'error');
-      return;
-    }
-    showLoading('Abrindo pendura...');
+    const item = S.merchantPickerResults[index];
+    if (!item) { toast('❌ Pendura não encontrada', 'error'); return; }
+    showLoading('Carregando...');
     try {
       await _enterCustomer(item.customer, item.merchant, item.ledger);
     } catch (e) {
-      console.error('pickMerchantByIndex:', e);
+      console.error('[Pendura] pickMerchantByIndex:', e);
       hideLoading();
       toast('❌ ' + (e.message || 'Erro ao abrir pendura'), 'error');
     }
@@ -662,13 +676,87 @@ const App = (() => {
     return S.merchant?.profile ? MerchantProfile.waPhone(S.merchant.profile) : '';
   }
 
-  // FIX: abre modal de compra com suporte a customer já selecionado (do ledger)
+  // Expõe o ID do cliente atual (usado no botão de compra do ledger no HTML)
+  function currentCustomerId() {
+    return S.customer?.id || null;
+  }
+
+  // Abre modal-purchase completo tanto do dashboard quanto do perfil do cliente
   function openPurchaseFromDashboard() {
-    // Pré-popula o select de cliente se estiver no canal de um cliente
-    if (S.customer && S.ledger) {
-      showModal('modal-purchase');
+    _preparePurchaseModal(null);   // null = mostrar select de cliente
+  }
+
+  // Chamado internamente — contextCustomerId null = dashboard, string = perfil
+  function _preparePurchaseModal(contextCustomerId) {
+    // Limpa campos
+    _setVal('purchase-amount', '');
+    _setVal('purchase-desc', '');
+    _setVal('purchase-due-date', '');
+    S.photoFile    = null;
+    S.photoDataUrl = null;
+    const wrap = document.getElementById('photo-preview-wrap');
+    if (wrap) wrap.classList.add('hidden');
+    const img  = document.getElementById('photo-preview-img');
+    if (img)  img.src = '';
+    const pname = document.getElementById('photo-preview-name');
+    if (pname) pname.textContent = '';
+    ['purchase-photo-camera', 'purchase-photo-gallery'].forEach(id => {
+      const el = document.getElementById(id); if (el) el.value = '';
+    });
+
+    // Gerencia o select de cliente no modal-purchase
+    let selWrap = document.getElementById('purchase-customer-wrap');
+    if (!selWrap) {
+      // Cria o campo na primeira vez
+      selWrap = document.createElement('div');
+      selWrap.id        = 'purchase-customer-wrap';
+      selWrap.className = 'field-group';
+      selWrap.innerHTML = `
+        <label>Cliente</label>
+        <select id="purchase-customer-select" class="field-select"
+                onchange="App.updatePurchaseWaPreview()">
+          <option value="">— escolha o cliente —</option>
+        </select>`;
+      // Insere como primeiro filho do modal-body
+      const body = document.querySelector('#modal-purchase .modal-body');
+      if (body) body.insertBefore(selWrap, body.firstChild);
+    }
+
+    const sel = document.getElementById('purchase-customer-select');
+    if (contextCustomerId) {
+      // Aberto de dentro do perfil — esconde select, usa cliente do contexto
+      selWrap.style.display = 'none';
+      if (sel) sel.value = contextCustomerId;
     } else {
-      showQuickLaunch('purchase');
+      // Aberto do dashboard — mostra select, popula com todos os clientes
+      selWrap.style.display = '';
+      if (sel) {
+        sel.innerHTML = '<option value="">— escolha o cliente —</option>';
+        S.allCustomers.forEach(c => {
+          const o = document.createElement('option');
+          o.value = c.id; o.textContent = c.name; sel.appendChild(o);
+        });
+        sel.value = '';
+      }
+    }
+
+    updatePurchaseWaPreview();
+    showModal('modal-purchase');
+  }
+
+  function updatePurchaseWaPreview() {
+    const selEl   = document.getElementById('purchase-customer-select');
+    const cid     = selEl?.value || (S.customer?.id) || '';
+    const amount  = parseFloat(_val('purchase-amount')) || 0;
+    const desc    = _val('purchase-desc');
+    const bubble  = document.getElementById('purchase-wa-bubble');
+    if (!bubble) return;
+    const c  = cid ? S.allCustomers.find(c => c.id === cid) : S.customer;
+    const nm = _merchantName();
+    if (c) {
+      bubble.innerHTML = WA.previewPurchase(nm, c.name, amount, desc);
+    } else {
+      bubble.innerHTML = '<p>📒 <b>Pendura Online</b></p><p>Selecione um cliente...</p>';
     }
   }
 
@@ -676,6 +764,21 @@ const App = (() => {
     const amtId  = type === 'purchase' ? 'purchase-amount' : 'payment-amount';
     const descId = type === 'purchase' ? 'purchase-desc'   : 'payment-desc';
     const dueId  = type === 'purchase' ? 'purchase-due-date' : null;
+
+    // Resolve cliente: pode ter sido selecionado no select do dashboard
+    if (type === 'purchase') {
+      const selEl = document.getElementById('purchase-customer-select');
+      const selCid = selEl?.value;
+      if (selCid && selCid !== S.customer?.id) {
+        const c = S.allCustomers.find(c => c.id === selCid);
+        const l = S.allLedgers.find(l => l.customer_id === selCid);
+        if (!c || !l) { toast('❌ Cliente não encontrado', 'error'); return; }
+        S.customer = c;
+        S.ledger   = l;
+      } else if (!selCid && !S.customer) {
+        toast('👤 Selecione um cliente', 'error'); return;
+      }
+    }
 
     const amount = parseFloat(_val(amtId));
     const desc   = _val(descId).trim();
@@ -804,9 +907,15 @@ const App = (() => {
   }
 
   // ── QUICK LAUNCH ─────────────────────────────────
+  // Compra sempre usa o modal unificado; pagamento usa modal-quick-launch
   function showQuickLaunch(type) {
-    S.quickType = type;
-    _setTxt('quick-launch-title', type === 'purchase' ? '➕ Lançar Compra' : '💰 Registrar Pagamento');
+    if (type === 'purchase') {
+      openPurchaseFromDashboard();
+      return;
+    }
+    // Pagamento rápido
+    S.quickType = 'payment';
+    _setTxt('quick-launch-title', '💰 Registrar Pagamento');
     const sel = document.getElementById('quick-customer-select');
     if (sel) {
       sel.innerHTML = '<option value="">— escolha o cliente —</option>';
@@ -834,49 +943,35 @@ const App = (() => {
   }
 
   async function submitQuickLaunch() {
+    // Quick launch agora é exclusivo para PAGAMENTO
+    // Compras usam modal-purchase via openPurchaseFromDashboard
     const cid    = _val('quick-customer-select');
     const amount = parseFloat(_val('quick-amount'));
     const desc   = _val('quick-desc').trim();
-    const due    = _val('quick-due-date') || null;
-    const type   = S.quickType;
-    if (!cid)               { toast('👤 Selecione um cliente', 'error'); return; }
+    if (!cid)                   { toast('👤 Selecione um cliente', 'error'); return; }
     if (!amount || amount <= 0) { toast('💵 Valor inválido', 'error'); return; }
 
     const c = S.allCustomers.find(c => c.id === cid);
     const l = S.allLedgers.find(l => l.customer_id === cid);
-    if (!l) { toast('❌ Canal não encontrado', 'error'); return; }
+    if (!c || !l) { toast('❌ Canal não encontrado', 'error'); return; }
 
     S.customer = c; S.ledger = l;
-    showLoading(type === 'purchase' ? 'Lançando...' : 'Registrando...');
+    showLoading('Registrando pagamento...');
 
-    // FIX: sintaxe corrigida (era duplicada/quebrada no original)
-    const { data: tx, error: txError } = await dbCreateTransaction(l.id, type, amount, desc, 'merchant', due);
-    if (txError) { hideLoading(); toast('❌ ' + (txError.message || 'Erro ao lançar'), 'error'); return; }
+    const { data: tx, error: txError } = await dbCreateTransaction(l.id, 'payment', amount, desc, 'merchant', null);
+    if (txError) { hideLoading(); toast('❌ ' + (txError.message || 'Erro'), 'error'); return; }
 
-    if (tx && S.photoFile) {
-      try {
-        const url = await dbSaveAttachment(tx.id, S.photoFile);
-        if (url) await dbUpdateTransactionAttachment(tx.id, url);
-      } catch(e) { console.warn('Foto não salva:', e); }
-      S.photoFile = null; S.photoDataUrl = null;
-    }
-
-    if (type === 'payment') {
-      await dbUpdateTransactionStatus(tx.id, 'confirmed', 'merchant');
-      await recalcBalance(l.id);
-    }
+    await dbUpdateTransactionStatus(tx.id, 'confirmed', 'merchant');
+    const newBalance = await recalcBalance(l.id);
 
     await _loadMerchantDashboard();
     closeModal('modal-quick-launch');
     hideLoading();
-    FX.celebrate(type === 'payment' ? 'payment' : 'purchase');
-    toast(`✅ ${type === 'purchase' ? 'Compra lançada' : 'Pagamento registrado'}!`, 'success');
+    FX.celebrate('payment');
+    toast('✅ Pagamento registrado!', 'success');
 
     const nm = _merchantName();
-    setTimeout(() => {
-      if (type === 'purchase') WA.purchase(c.phone, nm, amount, desc, tx.id, c.id, S.merchant?.id);
-      else WA.paymentReceipt(c.phone, nm, amount, l.balance || 0);
-    }, 600);
+    setTimeout(() => WA.paymentReceipt(c.phone, nm, amount, newBalance), 600);
   }
 
   // ── WA AÇÕES DO CANAL ────────────────────────────
@@ -1332,7 +1427,7 @@ const App = (() => {
     openLedger, filterLedger, switchLedgerTab, updatePaymentPreview, notifyPending,
     // Transactions
     createTransaction, createTransactionOnly, createPaymentOnly,
-    openPurchaseFromDashboard,
+    openPurchaseFromDashboard, updatePurchaseWaPreview, _preparePurchaseModal,
     // Quick launch
     showQuickLaunch, updateQuickWaPreview, submitQuickLaunch,
     // WA
@@ -1351,6 +1446,7 @@ const App = (() => {
     pickMerchantByIndex,
     // Misc
     selectPayMethod, showModal, closeModal, closeModalOutside,
-    showConfidenceDetail, toast, showLoading, hideLoading
+    showConfidenceDetail, toast, showLoading, hideLoading,
+    currentCustomerId
   };
 })();
