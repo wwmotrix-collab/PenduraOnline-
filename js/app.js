@@ -361,21 +361,50 @@ const App = (() => {
       </button>`;
     }).join('');
 
+    // ✅ SOLUÇÃO: Adicionar retry e verificações de estado
     // Listener nos próprios botões — <button> não tem problema de touch no mobile
     list.querySelectorAll('.merchant-picker-card').forEach(btn => {
-      btn.addEventListener('click', async function() {
+      btn.addEventListener('click', async function(e) {
+        e.preventDefault();
+        e.stopPropagation();
+
+        // Verificar se já está processando
+        if (this.disabled || this.getAttribute('data-loading')) return;
+
         const idx  = parseInt(this.dataset.pickerIdx, 10);
         const item = S.merchantPickerResults[idx];
+
+        if (!item) {
+          toast('❌ Pendura não encontrada', 'error');
+          return;
+        }
+
+        // Marcar como processando
+        this.setAttribute('data-loading', '1');
+        this.style.opacity = '0.6';
+        this.style.pointerEvents = 'none';
+
         console.log('[Pendura] picker tap idx=', idx, item?.merchant?.name);
-        if (!item) { toast('❌ Pendura não encontrada', 'error'); return; }
-        this.disabled = true;
+
         showLoading('Carregando...');
+
         try {
           await _enterCustomer(item.customer, item.merchant, item.ledger);
+
+          // opcional: limpar loading após sucesso
+          this.removeAttribute('data-loading');
+          this.style.opacity = '1';
+          this.style.pointerEvents = 'auto';
+
         } catch (err) {
           console.error('[Pendura] picker:', err);
+
           hideLoading();
-          this.disabled = false;
+
+          this.removeAttribute('data-loading');
+          this.style.opacity = '1';
+          this.style.pointerEvents = 'auto';
+
           toast('❌ ' + (err.message || 'Erro'), 'error');
         }
       });
