@@ -376,7 +376,13 @@ const App = (() => {
       </div>`;
     }).join('');
 
-    showScreen('merchant-picker');
+    
+list.querySelectorAll('.merchant-picker-card').forEach((el, idx) => {
+  el.onclick = () => pickMerchantByIndex(idx);
+  el.style.cursor = 'pointer';
+});
+showScreen('merchant-picker');
+
   }
 
   
