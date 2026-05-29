@@ -364,7 +364,7 @@ const App = (() => {
       const custId     = encodeURIComponent(JSON.stringify({ customer, merchant, ledger }));
 
       return `<div class="merchant-picker-card"
-                   onclick="App._pickMerchant(${JSON.stringify(JSON.stringify({ customer, merchant, ledger }))})">
+                   onclick="App._pickMerchant('${custId}')">
         <div class="mpc-avatar">${initials}</div>
         <div class="mpc-info">
           <h4>${mName}</h4>
@@ -378,7 +378,7 @@ const App = (() => {
   }
 
   async function _pickMerchant(jsonStr) {
-    const { customer, merchant, ledger } = JSON.parse(jsonStr);
+    const { customer, merchant, ledger } = JSON.parse(decodeURIComponent(jsonStr));
     await _enterCustomer(customer, merchant, ledger);
   }
 
@@ -1301,7 +1301,7 @@ const App = (() => {
   // ── SELETOR DE COMÉRCIO ───────────────────────────
   async function _pickMerchant(jsonStr) {
     try {
-      const { customer, merchant, ledger } = JSON.parse(jsonStr);
+      const { customer, merchant, ledger } = JSON.parse(decodeURIComponent(jsonStr));
       await _enterCustomer(customer, merchant, ledger);
     } catch(e) { toast('❌ Erro ao abrir pendura', 'error'); }
   }
