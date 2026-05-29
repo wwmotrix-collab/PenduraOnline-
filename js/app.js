@@ -1,5 +1,5 @@
 // ══════════════════════════════════════════════════
-// PENDURA v2.1 — APP.JS
+// PENDURA v2.1.3 — APP.JS (FIXED)
 // Orquestrador principal
 // ══════════════════════════════════════════════════
 
@@ -7,7 +7,7 @@ const App = (() => {
 
   // ── ESTADO ───────────────────────────────────────
   const S = {
-    merchant:     null,   // { ...merchant, profile }
+    merchant:     null,
     customer:     null,
     ledger:       null,
     transactions: [],
@@ -18,9 +18,10 @@ const App = (() => {
     payMethod:    'dinheiro',
     ledgerFilter: 'all',
     ledgerTab:    'history',
-    confResult:   null,   // último resultado de confiança calculado
-    photoFile:    null,   // arquivo de foto pendente no modal de compra
-    photoDataUrl: null,   // data URL para preview
+    confResult:   null,
+    photoFile:    null,
+    photoDataUrl: null,
+    merchantPickerResults: [],   // FIX: estado centralizado para picker
   };
 
   // ── FORMATO ──────────────────────────────────────
@@ -48,20 +49,16 @@ const App = (() => {
     initSupabase();
     const params = _parseUrlParams();
 
-    await _sleep(1400);  // splash
+    await _sleep(1400);
 
     const splash = document.getElementById('splash');
     splash.classList.add('fade-out');
-
     await _sleep(500);
     splash.classList.add('hidden');
 
-    // Deep link (cliente via WhatsApp)
-    // Suporta: ?customer=ID  ou  ?access=customer&phone=...&merchant=...  ou  ?cliente=PHONE&merchant=...
     const isDeepLink = params.customerId || (params.accessPhone && params.merchantId) || params.accessPhone;
     if (isDeepLink) { await _handleDeepLink(params); return; }
 
-    // Sessão salva
     const session = loadSession();
     if (session) { await _restoreSession(session); return; }
 
@@ -78,7 +75,6 @@ const App = (() => {
       el.classList.remove('hidden');
       el.querySelectorAll('.scroll-area').forEach(a => { a.scrollTop = 0; });
     }
-    // Tab switch login
     document.querySelectorAll('.tab-btn').forEach(btn => {
       btn.addEventListener('click', () => {
         document.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('active'));
@@ -130,14 +126,11 @@ const App = (() => {
     const phone = normalizePhone(_val('customer-phone'));
     if (!phone || phone.length < 10) { toast('📱 Digite seu telefone', 'error'); return; }
 
-    // Esconde hint anterior
     const hint = document.getElementById('customer-login-hint');
     if (hint) hint.style.display = 'none';
 
     showLoading('Buscando sua pendura...');
 
-    // No modo demo, garante que os dados de exemplo existam
-    // independentemente de o comerciante ter logado
     if (DEMO_MODE) {
       if (!DB.merchant || !DB.customers.length) {
         seedDemo(DB.merchant?.id || 'demo-merchant-default');
@@ -153,12 +146,9 @@ const App = (() => {
         hint.textContent = 'Nenhuma pendura encontrada para este WhatsApp. Peça ao comerciante um link de acesso direto.';
         hint.style.display = 'block';
       }
-      // No demo, mostra os números disponíveis para teste
       if (DEMO_MODE && DB.customers.length) {
         const nums = DB.customers.map(c => c.phone).join(', ');
-        if (hint) hint.textContent += `
-
-(Demo: use ${nums})`;
+        if (hint) hint.textContent += `\n\n(Demo: use ${nums})`;
       }
       return;
     }
@@ -175,8 +165,8 @@ const App = (() => {
     const name     = _val('reg-name').trim();
     const phone    = normalizePhone(_val('reg-phone'));
     const password = _val('reg-password');
-    if (!name)                        { toast('🏪 Nome do estabelecimento obrigatório', 'error'); return; }
-    if (!phone || phone.length < 10)  { toast('📱 Telefone inválido', 'error'); return; }
+    if (!name)                            { toast('🏪 Nome do estabelecimento obrigatório', 'error'); return; }
+    if (!phone || phone.length < 10)      { toast('📱 Telefone inválido', 'error'); return; }
     if (!password || password.length < 4) { toast('🔑 Mínimo 4 caracteres na senha', 'error'); return; }
 
     showLoading('Criando caderneta...');
@@ -211,24 +201,20 @@ const App = (() => {
   }
 
   async function _enterCustomer(customer, merchant, ledger) {
-    // Garante que merchant existe minimamente (pode vir null em deep links)
     if (!merchant && DEMO_MODE) merchant = DB.merchant;
     if (!merchant) {
-      // Cria objeto merchant vazio para não quebrar a UI
       merchant = { id: customer.merchant_id || 'unknown', name: 'Comércio', phone: '' };
     }
 
-    // Garante que ledger existe — se não veio, busca pelo customer_id
     if (!ledger) {
       if (DEMO_MODE) {
-        ledger = DB.ledgers.find(l => l.customer_id === customer.id) || null; // demo only
+        ledger = DB.ledgers.find(l => l.customer_id === customer.id) || null;
       } else if (customer?.id && merchant?.id) {
         const { data: fl } = await dbGetLedger(merchant.id, customer.id);
         ledger = fl || null;
       }
     }
     if (!ledger) {
-      // Cria ledger vazio para não quebrar a UI
       ledger = { id: null, merchant_id: merchant.id, customer_id: customer.id, balance: 0 };
     }
 
@@ -236,11 +222,9 @@ const App = (() => {
     S.merchant = merchant;
     S.ledger   = ledger;
 
-    // Carrega/cria perfil do merchant
     const profile = merchant.profile
       || (merchant.id && merchant.id !== 'unknown' ? MerchantProfile.load(merchant.id) : null)
       || MerchantProfile.createFromMerchant(merchant);
-    // Usa nome do merchant.name se profile ainda não tem business_name
     if (!profile.business_name && merchant.name) profile.business_name = merchant.name;
     merchant.profile = profile;
 
@@ -269,17 +253,15 @@ const App = (() => {
   function logout() {
     clearSession();
     Object.assign(S, { merchant: null, customer: null, ledger: null,
-      transactions: [], allCustomers: [], allLedgers: [], confResult: null });
+      transactions: [], allCustomers: [], allLedgers: [], confResult: null,
+      merchantPickerResults: [] });
     showScreen('login');
   }
 
   // ── DEEP LINK ────────────────────────────────────
-  // Suporta múltiplos formatos de URL gerados pelo WA
   async function _handleDeepLink(params) {
     showLoading('Carregando sua pendura...');
     try {
-      // ── Formato novo: ?access=customer&phone=51999&merchant=ID
-      // ── Formato novo: ?cliente=PHONE&merchant=ID
       if (params.accessPhone) {
         const phone = params.accessPhone.replace(/\D/g, '');
         const { data: results, error } = await dbFindCustomerByPhone(phone, params.merchantId || null);
@@ -294,10 +276,9 @@ const App = (() => {
         if (results.length === 1) {
           const { customer, merchant, ledger } = results[0];
           await _enterCustomer(customer, merchant, ledger);
-          // Abre modal de confirmação se havia txId
           if (params.confirmTxId) {
             const _dtxs = DEMO_MODE ? DB.transactions : ((await dbGetTransactions(ledger?.id || '')).data || []);
-        const tx = _dtxs.find(t => t.id === params.confirmTxId);
+            const tx = _dtxs.find(t => t.id === params.confirmTxId);
             if (tx?.status === 'pending') setTimeout(() => _openConfirmModal(tx), 500);
           }
         } else {
@@ -306,12 +287,10 @@ const App = (() => {
         return;
       }
 
-      // ── Formato legado: ?customer=ID
       if (params.customerId) {
         const { data: customer } = await dbGetCustomerById(params.customerId);
         if (!customer) { hideLoading(); showScreen('login'); return; }
         const merchant = customer.merchants || DB.merchant;
-        // Busca ledger — tenta demo cache primeiro, senão Supabase
         let ledger = DEMO_MODE
           ? (DB.ledgers.find(l => l.id === params.ledgerId || l.customer_id === params.customerId) || null)
           : null;
@@ -322,7 +301,6 @@ const App = (() => {
         hideLoading();
         await _enterCustomer(customer, merchant, ledger);
         if (params.confirmTxId) {
-          // Busca tx para modal de confirmação
           let _confirmTx = null;
           if (DEMO_MODE) {
             _confirmTx = DB.transactions.find(t => t.id === params.confirmTxId) || null;
@@ -336,37 +314,37 @@ const App = (() => {
       }
 
       hideLoading();
-  _ensureCustomerLoginHint();
-    showScreen('login');
+      showScreen('login');
     } catch (e) { console.error(e); hideLoading(); showScreen('login'); }
   }
 
-  // Exibe seletor quando cliente tem pendura em mais de um comércio
+  // ── SELETOR DE MÚLTIPLOS COMÉRCIOS ────────────────
+  // FIX: versão única, sem duplicação, sem JSON no onclick
   function _showMerchantPicker(results) {
     const list = document.getElementById('merchant-picker-list');
     const text = document.getElementById('picker-found-text');
     if (!list) return;
 
+    // Salva resultados no estado (única fonte de verdade)
+    S.merchantPickerResults = results;
+
     if (text) text.textContent = results.length > 1
       ? `Encontramos sua pendura em ${results.length} comércios`
       : 'Encontramos sua pendura!';
 
-    S.merchantPickerResults = results;
-    window.PENDURA_PICKER_RESULTS = results;
     list.innerHTML = results.map(({ customer, merchant, ledger }, idx) => {
-      const profile    = MerchantProfile.load(merchant?.id) ||
-                         MerchantProfile.createFromMerchant(merchant || {});
-      const mName      = MerchantProfile.displayName(profile);
-      const balance    = ledger?.balance || 0;
-      const balClass   = balance < 0 ? 'credit' : balance === 0 ? 'zero' : '';
-      const balText    = balance < 0  ? '🎁 Crédito'
-                       : balance === 0 ? '✅ Zerado'
-                       : new Intl.NumberFormat('pt-BR',{style:'currency',currency:'BRL'}).format(balance);
-      const initials   = mName.split(' ').map(w=>w[0]).join('').slice(0,2).toUpperCase();
-      const custId     = encodeURIComponent(JSON.stringify({ customer, merchant, ledger }));
+      const profile  = MerchantProfile.load(merchant?.id) ||
+                       MerchantProfile.createFromMerchant(merchant || {});
+      const mName    = MerchantProfile.displayName(profile);
+      const balance  = ledger?.balance || 0;
+      const balClass = balance < 0 ? 'credit' : balance === 0 ? 'zero' : '';
+      const balText  = balance < 0  ? '🎁 Crédito'
+                     : balance === 0 ? '✅ Zerado'
+                     : fmt(balance);
+      const initials = mName.split(' ').map(w => w[0]).join('').slice(0,2).toUpperCase();
 
-      return `<div class="merchant-picker-card"
-                   onclick="App.pickMerchantByIndex(${idx})">
+      // FIX: passa apenas o índice numérico, sem JSON serializado
+      return `<div class="merchant-picker-card" data-picker-idx="${idx}" style="cursor:pointer">
         <div class="mpc-avatar">${initials}</div>
         <div class="mpc-info">
           <h4>${mName}</h4>
@@ -376,34 +354,33 @@ const App = (() => {
       </div>`;
     }).join('');
 
-    
-list.querySelectorAll('.merchant-picker-card').forEach((el, idx) => {
-  el.onclick = () => pickMerchantByIndex(idx);
-  el.style.cursor = 'pointer';
-});
-showScreen('merchant-picker');
+    // FIX: event listeners adicionados DEPOIS do innerHTML, usando dataset
+    list.querySelectorAll('.merchant-picker-card').forEach(el => {
+      el.addEventListener('click', () => {
+        const idx = parseInt(el.dataset.pickerIdx, 10);
+        pickMerchantByIndex(idx);
+      });
+    });
 
+    showScreen('merchant-picker');
   }
 
-  
-async function pickMerchantByIndex(index) {
-  try {
-    const list = window.PENDURA_PICKER_RESULTS || S.merchantPickerResults || [];
-    const item = list[Number(index)];
+  // FIX: definição única de pickMerchantByIndex
+  async function pickMerchantByIndex(index) {
+    const list = S.merchantPickerResults;
+    const item = list[index];
     if (!item) {
       toast('❌ Pendura não encontrada', 'error');
       return;
     }
-    await _enterCustomer(item.customer, item.merchant, item.ledger);
-  } catch (e) {
-    console.error(e);
-    toast('❌ ' + (e.message || 'Erro ao abrir pendura'), 'error');
-  }
-}
-
-async function _pickMerchant(jsonStr) {
-    const { customer, merchant, ledger } = JSON.parse(decodeURIComponent(jsonStr));
-    await _enterCustomer(customer, merchant, ledger);
+    showLoading('Abrindo pendura...');
+    try {
+      await _enterCustomer(item.customer, item.merchant, item.ledger);
+    } catch (e) {
+      console.error('pickMerchantByIndex:', e);
+      hideLoading();
+      toast('❌ ' + (e.message || 'Erro ao abrir pendura'), 'error');
+    }
   }
 
   // ── DASHBOARD COMERCIANTE ────────────────────────
@@ -430,7 +407,6 @@ async function _pickMerchant(jsonStr) {
 
     for (const l of S.allLedgers) {
       if (l.balance > 0) totalPending += l.balance;
-      // Usa dados em cache (demo) ou busca do Supabase sob demanda
       const txSource = DEMO_MODE
         ? DB.transactions.filter(t => t.ledger_id === l.id)
         : ((await dbGetTransactions(l.id)).data || []);
@@ -452,8 +428,6 @@ async function _pickMerchant(jsonStr) {
       badge.style.display = pendingConf > 0 ? '' : 'none';
     }
 
-    // Próximos vencimentos
-    // Schedules: usa cache demo ou busca real
     const schedules = DEMO_MODE
       ? (DB.schedules || [])
       : ((await dbGetSchedules(mid)).data || []);
@@ -474,7 +448,6 @@ async function _pickMerchant(jsonStr) {
     el.innerHTML = customers.map((c, i) => {
       const l       = S.allLedgers.find(l => l.customer_id === c.id);
       const balance = l ? l.balance : 0;
-      // Cache de transações — disponível em demo; em prod fica vazio aqui (carregado no canal)
       const _txCache = DEMO_MODE ? DB.transactions : [];
       const pending = _txCache.filter(t => l && t.ledger_id === l.id && t.status === 'pending');
       const txs     = _txCache.filter(t => l && t.ledger_id === l.id);
@@ -487,7 +460,7 @@ async function _pickMerchant(jsonStr) {
       const initials  = c.name.split(' ').map(w => w[0]).join('').slice(0,2).toUpperCase();
 
       return `<div class="customer-card${pending.length ? ' has-pending' : ''}"
-                   onclick="App.openLedger('${c.id}')"
+                   data-customer-id="${c.id}"
                    style="animation-delay:${i*40}ms">
         <div class="cc-avatar">${initials}</div>
         <div class="cc-info">
@@ -502,7 +475,11 @@ async function _pickMerchant(jsonStr) {
       </div>`;
     }).join('');
 
-    el.querySelectorAll('.customer-card').forEach((el, i) => FX.slideIn(el, i * 50));
+    // Event listeners via dataset (sem onclick inline com aspas problemáticas)
+    el.querySelectorAll('.customer-card').forEach((card, i) => {
+      card.addEventListener('click', () => openLedger(card.dataset.customerId));
+      FX.slideIn(card, i * 50);
+    });
   }
 
   function filterCustomers(q) {
@@ -539,7 +516,6 @@ async function _pickMerchant(jsonStr) {
     const { data: c, error } = await dbCreateCustomer(S.merchant.id, name, phone, limitTotal, limitVis);
     if (error) { hideLoading(); toast('❌ ' + (error.message || 'Erro ao criar cliente'), 'error'); return; }
 
-    // Busca ledger via Supabase (funciona em demo E produção)
     const { data: l } = await dbGetLedger(S.merchant.id, c.id);
     hideLoading();
     toast(`✅ ${name} adicionado!`, 'success');
@@ -567,18 +543,14 @@ async function _pickMerchant(jsonStr) {
     _setTxt('ledger-customer-name',  c.name);
     _setTxt('ledger-customer-phone', fmtPhone(c.phone));
 
-    // Recalcula e exibe saldo
     const balance = await recalcBalance(l.id);
     S.ledger.balance = balance;
     _refreshBalanceUI(balance, 'ledger-balance', 'balance-label-text');
-
-    // Barra de limite
     _renderLimitBar(c, balance);
 
     await _loadLedgerTransactions();
     showScreen('ledger');
 
-    // Calcula confiança em background
     setTimeout(() => {
       S.confResult = Confidence.calculate(S.transactions, l, c);
       Confidence.renderPill(S.confResult);
@@ -586,10 +558,10 @@ async function _pickMerchant(jsonStr) {
   }
 
   function _renderLimitBar(customer, balance) {
-    const wrap     = document.getElementById('ledger-limit-bar');
-    const fill     = document.getElementById('limit-bar-fill');
-    const usedLbl  = document.getElementById('limit-used-label');
-    const totLbl   = document.getElementById('limit-total-label');
+    const wrap    = document.getElementById('ledger-limit-bar');
+    const fill    = document.getElementById('limit-bar-fill');
+    const usedLbl = document.getElementById('limit-used-label');
+    const totLbl  = document.getElementById('limit-total-label');
     if (!wrap) return;
 
     if (!customer.limit_total) { wrap.classList.add('hidden'); return; }
@@ -644,14 +616,20 @@ async function _pickMerchant(jsonStr) {
           <div class="tx-date">${fmtDate(tx.created_at)}</div>
           ${dueStr ? `<div class="tx-due-date${isLate?' overdue':''}">${dueStr}${isLate?' 🔴':''}</div>` : ''}
           <span class="tx-status-pill ${tx.status}">${statusLabels[tx.status]||tx.status}</span>
-          ${tx.status === 'pending' ? `<button class="tx-wa-btn" onclick="App.notifyPending('${tx.id}')">💬 Notificar</button>` : ''}
-          ${tx.attachment_url ? `<button class="tx-photo-btn" onclick="App.viewPhoto('${tx.attachment_url.replace(/'/g,"\\'")}')">🖼️ Ver foto</button>` : ''}
+          ${tx.status === 'pending' ? `<button class="tx-wa-btn" data-tx-id="${tx.id}">💬 Notificar</button>` : ''}
+          ${tx.attachment_url ? `<button class="tx-photo-btn" data-photo-url="${tx.attachment_url}">🖼️ Ver foto</button>` : ''}
         </div>
         <div class="tx-amount-col">
           <div class="tx-amount">${sign} ${fmt(tx.amount)}</div>
         </div>
       </div>`;
     }).join('');
+
+    // Bind events (sem onclick inline)
+    el.querySelectorAll('.tx-wa-btn').forEach(btn =>
+      btn.addEventListener('click', () => notifyPending(btn.dataset.txId)));
+    el.querySelectorAll('.tx-photo-btn').forEach(btn =>
+      btn.addEventListener('click', () => viewPhoto(btn.dataset.photoUrl)));
   }
 
   function filterLedger(f, btn) {
@@ -684,6 +662,16 @@ async function _pickMerchant(jsonStr) {
     return S.merchant?.profile ? MerchantProfile.waPhone(S.merchant.profile) : '';
   }
 
+  // FIX: abre modal de compra com suporte a customer já selecionado (do ledger)
+  function openPurchaseFromDashboard() {
+    // Pré-popula o select de cliente se estiver no canal de um cliente
+    if (S.customer && S.ledger) {
+      showModal('modal-purchase');
+    } else {
+      showQuickLaunch('purchase');
+    }
+  }
+
   async function createTransaction(type) {
     const amtId  = type === 'purchase' ? 'purchase-amount' : 'payment-amount';
     const descId = type === 'purchase' ? 'purchase-desc'   : 'payment-desc';
@@ -699,7 +687,6 @@ async function _pickMerchant(jsonStr) {
     const { data: tx, error } = await dbCreateTransaction(S.ledger.id, type, amount, desc, 'merchant', due);
     if (error) { hideLoading(); toast('❌ Erro', 'error'); return; }
 
-    // Upload de foto (compra com anexo)
     if (type === 'purchase' && S.photoFile) {
       try {
         const url = await dbSaveAttachment(tx.id, S.photoFile);
@@ -708,12 +695,13 @@ async function _pickMerchant(jsonStr) {
           tx.attachment_url = url;
         }
       } catch (e) { console.warn('Foto não salva:', e); }
-      // Limpa estado da foto
       S.photoFile = null; S.photoDataUrl = null;
       const wrap = document.getElementById('photo-preview-wrap');
       if (wrap) wrap.classList.add('hidden');
-      const input = document.getElementById('purchase-photo');
-      if (input) input.value = '';
+      const camInput = document.getElementById('purchase-photo-camera');
+      const galInput = document.getElementById('purchase-photo-gallery');
+      if (camInput) camInput.value = '';
+      if (galInput) galInput.value = '';
     }
 
     if (type === 'payment') {
@@ -733,7 +721,6 @@ async function _pickMerchant(jsonStr) {
     await _loadMerchantDashboard();
     hideLoading();
 
-    // FX + WA
     if (type === 'payment') {
       FX.celebrate('payment');
       FX.vibrate([30, 30, 60]);
@@ -753,7 +740,6 @@ async function _pickMerchant(jsonStr) {
     if (!amount || amount <= 0) { toast('💵 Valor inválido', 'error'); return; }
     showLoading('Lançando...');
     const { data: tx } = await dbCreateTransaction(S.ledger.id, 'purchase', amount, desc, 'merchant', due);
-    // Foto (sem notificação WA, mas salva o anexo)
     if (tx && S.photoFile) {
       try {
         const url = await dbSaveAttachment(tx.id, S.photoFile);
@@ -840,7 +826,7 @@ async function _pickMerchant(jsonStr) {
     const bubble = document.getElementById('quick-wa-bubble');
     if (!bubble) return;
     if (!cid) { bubble.innerHTML = '<p>Selecione um cliente...</p>'; return; }
-    const c = S.allCustomers.find(c => c.id === cid);
+    const c  = S.allCustomers.find(c => c.id === cid);
     const nm = _merchantName();
     bubble.innerHTML = S.quickType === 'purchase'
       ? WA.previewPurchase(nm, c?.name, amount, '')
@@ -851,6 +837,7 @@ async function _pickMerchant(jsonStr) {
     const cid    = _val('quick-customer-select');
     const amount = parseFloat(_val('quick-amount'));
     const desc   = _val('quick-desc').trim();
+    const due    = _val('quick-due-date') || null;
     const type   = S.quickType;
     if (!cid)               { toast('👤 Selecione um cliente', 'error'); return; }
     if (!amount || amount <= 0) { toast('💵 Valor inválido', 'error'); return; }
@@ -861,15 +848,18 @@ async function _pickMerchant(jsonStr) {
 
     S.customer = c; S.ledger = l;
     showLoading(type === 'purchase' ? 'Lançando...' : 'Registrando...');
-    const { data: tx, error } = const { data: tx, error: txError } = await dbCreateTransaction(l.id, type, amount, desc, 'merchant', due);
-  if (txError) { hideLoading(); toast('❌ ' + (txError.message || 'Erro ao lançar'), 'error'); return; }
-  if (tx && S.photoFile) {
-    try {
-      const url = await dbSaveAttachment(tx.id, S.photoFile);
-      if (url) await dbUpdateTransactionAttachment(tx.id, url);
-    } catch(e) { console.warn('Foto não salva:', e); }
-  }
-    if (error) { hideLoading(); toast('❌ Erro', 'error'); return; }
+
+    // FIX: sintaxe corrigida (era duplicada/quebrada no original)
+    const { data: tx, error: txError } = await dbCreateTransaction(l.id, type, amount, desc, 'merchant', due);
+    if (txError) { hideLoading(); toast('❌ ' + (txError.message || 'Erro ao lançar'), 'error'); return; }
+
+    if (tx && S.photoFile) {
+      try {
+        const url = await dbSaveAttachment(tx.id, S.photoFile);
+        if (url) await dbUpdateTransactionAttachment(tx.id, url);
+      } catch(e) { console.warn('Foto não salva:', e); }
+      S.photoFile = null; S.photoDataUrl = null;
+    }
 
     if (type === 'payment') {
       await dbUpdateTransactionStatus(tx.id, 'confirmed', 'merchant');
@@ -915,12 +905,11 @@ async function _pickMerchant(jsonStr) {
 
   function sendWhatsAppReminder() {
     if (!S.customer || !S.ledger) return;
-    // Próximo due_date pendente
     const due = S.transactions.find(t => t.status === 'pending' && t.due_date)?.due_date || null;
     WA.reminder(S.customer.phone, _merchantName(), S.customer.name, S.ledger.balance, due);
   }
 
-  // ── CONFIANÇA MODAL ───────────────────────────────
+  // ── CONFIANÇA ─────────────────────────────────────
   function showConfidenceDetail() {
     if (!S.confResult) return;
     Confidence.renderModal(S.confResult, S.customer?.name);
@@ -932,34 +921,30 @@ async function _pickMerchant(jsonStr) {
     const ledger = S.ledger;
     if (!ledger) return;
 
-    // Se o ledger é novo/vazio (sem id persistido), usa balance 0
     const balance = ledger.id ? await recalcBalance(ledger.id) : 0;
     S.ledger.balance = balance;
 
     const { data: txs } = ledger.id ? await dbGetTransactions(ledger.id) : { data: [] };
     S.transactions = txs || [];
 
-    // Saldo hero
     const balEl  = document.getElementById('customer-balance');
     const statEl = document.getElementById('customer-balance-status');
     if (balEl) {
       if (balance < 0) {
-        balEl.textContent    = `+ ${fmt(Math.abs(balance))}`;
-        balEl.className      = 'ch-amount credit';
+        balEl.textContent = `+ ${fmt(Math.abs(balance))}`;
+        balEl.className   = 'ch-amount credit';
         if (statEl) statEl.textContent = '🎁 Você tem crédito aqui!';
       } else if (balance === 0) {
-        balEl.textContent    = fmt(0);
-        balEl.className      = 'ch-amount zero';
+        balEl.textContent = fmt(0);
+        balEl.className   = 'ch-amount zero';
         if (statEl) statEl.textContent = 'Tudo em dia! 🎉';
       } else {
-        balEl.textContent    = fmt(balance);
-        balEl.className      = 'ch-amount debt';
+        balEl.textContent = fmt(balance);
+        balEl.className   = 'ch-amount debt';
         if (statEl) statEl.textContent = `Você deve ${fmt(balance)}`;
       }
     }
 
-    // Barra de progresso de quitação
-    const maxEver = Math.max(...S.transactions.filter(t => t.type === 'purchase').map(t => t.amount), 0);
     const totalPurchased = S.transactions
       .filter(t => t.type === 'purchase' && t.status === 'confirmed')
       .reduce((s,t) => s + t.amount, 0);
@@ -979,7 +964,6 @@ async function _pickMerchant(jsonStr) {
       progWrap.style.display = 'none';
     }
 
-    // Pendências
     const pending   = S.transactions.filter(t => t.status === 'pending');
     const pendSec   = document.getElementById('customer-pending-section');
     const pendCount = document.getElementById('customer-pending-count');
@@ -987,11 +971,9 @@ async function _pickMerchant(jsonStr) {
     if (pendCount) pendCount.textContent = `${pending.length} lançamento${pending.length !== 1 ? 's' : ''} aguardando confirmação`;
     _renderCustomerPending(pending);
 
-    // Confiança cliente
     const conf = Confidence.calculate(S.transactions, ledger, S.customer);
     Confidence.renderCustomerConfidence(conf);
 
-    // Insights rápidos
     const insightsWrap = document.getElementById('cust-insights');
     if (insightsWrap && conf.score > 0) {
       insightsWrap.style.display = '';
@@ -1015,7 +997,6 @@ async function _pickMerchant(jsonStr) {
   function _renderCustomerPending(pending) {
     const el = document.getElementById('customer-pending-list');
     if (!el) return;
-    const mName = S.merchant ? MerchantProfile.displayName(S.merchant.profile) : '—';
     el.innerHTML = pending.map(tx => {
       const typeLabel = tx.type === 'purchase' ? '🛒 Compra' : '💰 Pagamento';
       return `<div class="pending-confirm-card">
@@ -1024,13 +1005,20 @@ async function _pickMerchant(jsonStr) {
           <span class="pcc-amount">${fmt(tx.amount)}</span>
         </div>
         <div class="pcc-desc">${tx.description || typeLabel} · ${fmtDate(tx.created_at)}</div>
-        ${tx.attachment_url ? `<button class="tx-photo-btn" style="margin-bottom:0.5rem" onclick="App.viewPhoto('${tx.attachment_url.replace(/'/g,"\\'")}')">🖼️ Ver foto da compra</button>` : ''}
+        ${tx.attachment_url ? `<button class="tx-photo-btn" style="margin-bottom:0.5rem" data-photo-url="${tx.attachment_url}">🖼️ Ver foto da compra</button>` : ''}
         <div class="pcc-actions">
-          <button class="btn-pcc-yes" onclick="App.customerConfirmTx('${tx.id}')">✅ Confirmar</button>
-          <button class="btn-pcc-no"  onclick="App.openContestModal('${tx.id}')">❌ Contestar</button>
+          <button class="btn-pcc-yes" data-tx-id="${tx.id}">✅ Confirmar</button>
+          <button class="btn-pcc-no"  data-tx-id="${tx.id}">❌ Contestar</button>
         </div>
       </div>`;
     }).join('');
+
+    el.querySelectorAll('.btn-pcc-yes').forEach(btn =>
+      btn.addEventListener('click', () => customerConfirmTx(btn.dataset.txId)));
+    el.querySelectorAll('.btn-pcc-no').forEach(btn =>
+      btn.addEventListener('click', () => openContestModal(btn.dataset.txId)));
+    el.querySelectorAll('.tx-photo-btn').forEach(btn =>
+      btn.addEventListener('click', () => viewPhoto(btn.dataset.photoUrl)));
   }
 
   function _renderCustomerTransactions(txs) {
@@ -1048,12 +1036,15 @@ async function _pickMerchant(jsonStr) {
           <div class="tx-desc">${tx.description||(tx.type==='purchase'?'Compra':'Pagamento')}</div>
           <div class="tx-date">${fmtDate(tx.created_at)}</div>
           <span class="tx-status-pill ${tx.status}">${sMap[tx.status]||tx.status}</span>
-          ${tx.attachment_url ? `<button class="tx-photo-btn" onclick="App.viewPhoto('${tx.attachment_url.replace(/'/g,"\\'")}')">🖼️ Ver foto</button>` : ''}
+          ${tx.attachment_url ? `<button class="tx-photo-btn" data-photo-url="${tx.attachment_url}">🖼️ Ver foto</button>` : ''}
         </div>
         <div class="tx-amount-col">
           <div class="tx-amount">${tx.type==='purchase'?'+':'-'} ${fmt(tx.amount)}</div>
         </div>
       </div>`).join('');
+
+    el.querySelectorAll('.tx-photo-btn').forEach(btn =>
+      btn.addEventListener('click', () => viewPhoto(btn.dataset.photoUrl)));
   }
 
   // ── CONFIRMAR / CONTESTAR ─────────────────────────
@@ -1073,7 +1064,6 @@ async function _pickMerchant(jsonStr) {
     FX.vibrate([30, 60]);
     toast('✅ Confirmado!', 'success');
 
-    // Notifica comerciante
     const mPhone = _merchantPhone();
     if (mPhone) {
       setTimeout(() => WA.merchantConfirmed(mPhone, S.customer.name, tx.type, tx.amount, newBalance, tx.description), 800);
@@ -1169,7 +1159,7 @@ async function _pickMerchant(jsonStr) {
   // ── CALENDÁRIO ────────────────────────────────────
   async function showCalendarScreen() {
     showScreen('calendar');
-    const { data: allTx }    = await dbGetAllTransactionsForMerchant(S.merchant.id);
+    const { data: allTx }     = await dbGetAllTransactionsForMerchant(S.merchant.id);
     const { data: schedules } = await dbGetSchedules(S.merchant.id);
     Calendar.buildEvents(allTx || [], schedules || []);
     Calendar.render();
@@ -1246,17 +1236,13 @@ async function _pickMerchant(jsonStr) {
     FX.glowBalance(balance <= 0);
   }
 
-  function _val(id)         { return document.getElementById(id)?.value || ''; }
-  function _setVal(id, v)   { const el = document.getElementById(id); if (el) el.value = v; }
-  function _setTxt(id, v)   { const el = document.getElementById(id); if (el) el.textContent = v; }
-  function _sleep(ms)       { return new Promise(r => setTimeout(r, ms)); }
+  function _val(id)       { return document.getElementById(id)?.value || ''; }
+  function _setVal(id, v) { const el = document.getElementById(id); if (el) el.value = v; }
+  function _setTxt(id, v) { const el = document.getElementById(id); if (el) el.textContent = v; }
+  function _sleep(ms)     { return new Promise(r => setTimeout(r, ms)); }
 
   function _parseUrlParams() {
     const p = new URLSearchParams(window.location.search);
-    // Formatos suportados:
-    // Legado:  ?customer=ID&ledger=ID&confirm=TXID
-    // v2.1.1:  ?access=customer&phone=51999999999&merchant=ID
-    //          ?cliente=PHONE&merchant=ID
     return {
       customerId:  p.get('customer'),
       ledgerId:    p.get('ledger'),
@@ -1267,22 +1253,25 @@ async function _pickMerchant(jsonStr) {
     };
   }
 
-
   // ── FOTO / ANEXO ─────────────────────────────────
   function handlePhotoSelected(input) {
     const file = input.files?.[0];
     if (!file) return;
 
-    // Valida tamanho (max 8MB)
     if (file.size > 8 * 1024 * 1024) {
       toast('❌ Foto muito grande (máx 8 MB)', 'error');
       input.value = '';
       return;
     }
 
-    // Limpa o outro input para não duplicar
+    // Limpa o outro input
     const otherId = input.id === 'purchase-photo-camera'
-      ? 'purchase-photo-gallery' : 'purchase-photo-camera';
+      ? 'purchase-photo-gallery'
+      : input.id === 'quick-photo-camera'
+        ? 'quick-photo-gallery'
+        : input.id === 'purchase-photo-gallery'
+          ? 'purchase-photo-camera'
+          : 'quick-photo-camera';
     const other = document.getElementById(otherId);
     if (other) other.value = '';
 
@@ -1291,11 +1280,16 @@ async function _pickMerchant(jsonStr) {
     const reader = new FileReader();
     reader.onload = e => {
       S.photoDataUrl = e.target.result;
-      const img  = document.getElementById('photo-preview-img');
-      const wrap = document.getElementById('photo-preview-wrap');
+      // Tenta os dois pares de elementos (modal-purchase e modal-quick-launch)
+      ['photo-preview-img', 'quick-photo-preview-img'].forEach(imgId => {
+        const img = document.getElementById(imgId);
+        if (img) img.src = e.target.result;
+      });
+      ['photo-preview-wrap', 'quick-photo-preview-wrap'].forEach(wrapId => {
+        const wrap = document.getElementById(wrapId);
+        if (wrap) wrap.classList.remove('hidden');
+      });
       const name = document.getElementById('photo-preview-name');
-      if (img)  img.src = e.target.result;
-      if (wrap) wrap.classList.remove('hidden');
       if (name) name.textContent = '📎 ' + file.name;
     };
     reader.readAsDataURL(file);
@@ -1303,16 +1297,20 @@ async function _pickMerchant(jsonStr) {
 
   function removePhoto() {
     S.photoFile = null; S.photoDataUrl = null;
-    const wrap = document.getElementById('photo-preview-wrap');
-    const img  = document.getElementById('photo-preview-img');
-    const name = document.getElementById('photo-preview-name');
-    // Limpa ambos os inputs
-    ['purchase-photo-camera', 'purchase-photo-gallery'].forEach(id => {
+    ['purchase-photo-camera', 'purchase-photo-gallery',
+     'quick-photo-camera', 'quick-photo-gallery'].forEach(id => {
       const el = document.getElementById(id);
       if (el) el.value = '';
     });
-    if (wrap) wrap.classList.add('hidden');
-    if (img)  img.src = '';
+    ['photo-preview-wrap', 'quick-photo-preview-wrap'].forEach(id => {
+      const el = document.getElementById(id);
+      if (el) el.classList.add('hidden');
+    });
+    ['photo-preview-img', 'quick-photo-preview-img'].forEach(id => {
+      const el = document.getElementById(id);
+      if (el) el.src = '';
+    });
+    const name = document.getElementById('photo-preview-name');
     if (name) name.textContent = '';
   }
 
@@ -1322,56 +1320,21 @@ async function _pickMerchant(jsonStr) {
     showModal('modal-photo-view');
   }
 
-  // ── SELETOR DE COMÉRCIO ───────────────────────────
-  
-async function pickMerchantByIndex(index) {
-  try {
-    const list = window.PENDURA_PICKER_RESULTS || S.merchantPickerResults || [];
-    const item = list[Number(index)];
-    if (!item) {
-      toast('❌ Pendura não encontrada', 'error');
-      return;
-    }
-    await _enterCustomer(item.customer, item.merchant, item.ledger);
-  } catch (e) {
-    console.error(e);
-    toast('❌ ' + (e.message || 'Erro ao abrir pendura'), 'error');
-  }
-}
-
-async function _pickMerchant(jsonStr) {
-    try {
-      const { customer, merchant, ledger } = JSON.parse(decodeURIComponent(jsonStr));
-      await _enterCustomer(customer, merchant, ledger);
-    } catch(e) { toast('❌ ' + (e.message || 'Erro ao abrir pendura'), 'error'); }
-  }
-
-  // ── HINT DE LOGIN CLIENTE ─────────────────────────
-  // Injeta hint na tela de login se ainda não existe
-  function _ensureCustomerLoginHint() {
-    if (document.getElementById('customer-login-hint')) return;
-    const tabEl = document.getElementById('tab-cliente');
-    if (!tabEl) return;
-    const hint = document.createElement('p');
-    hint.id = 'customer-login-hint';
-    hint.style.cssText = 'display:none;margin-top:0.75rem;padding:0.75rem;background:var(--red-dim);color:var(--red);border-radius:var(--r-sm);font-size:0.82rem;line-height:1.5;text-align:center';
-    tabEl.appendChild(hint);
-  }
-
   // ── EXPOSIÇÃO PÚBLICA ─────────────────────────────
   return {
     // Auth
     loginMerchant, loginCustomer, registerMerchant, logout,
     // Nav
-    showScreen, goBackToDashboard,
-    // Customer
+    showScreen, goBackToDashboard, showCalendarScreen,
+    // Customer mgmt
     toggleCreditLimit, createCustomer, filterCustomers,
     // Ledger
     openLedger, filterLedger, switchLedgerTab, updatePaymentPreview, notifyPending,
     // Transactions
     createTransaction, createTransactionOnly, createPaymentOnly,
-    // Quick
-    showQuickLaunch, openPurchaseFromDashboard, updateQuickWaPreview, submitQuickLaunch,
+    openPurchaseFromDashboard,
+    // Quick launch
+    showQuickLaunch, updateQuickWaPreview, submitQuickLaunch,
     // WA
     openWhatsAppCustomer, sendWhatsAppConfirmation, sendWhatsAppBalance,
     sendWhatsAppLink, sendWhatsAppReminder,
@@ -1381,14 +1344,13 @@ async function _pickMerchant(jsonStr) {
     // Profile
     openProfileModal, saveProfile, skipProfileSetup,
     // Calendar
-    calNav, calSelectDay, showCalendarScreen,
-    // Foto / Anexo
+    calNav, calSelectDay,
+    // Foto
     handlePhotoSelected, removePhoto, viewPhoto,
-    // Seletor de comércio
-    pickMerchantByIndex, _pickMerchant,
+    // Picker (exposto para compatibilidade com chamadas externas)
+    pickMerchantByIndex,
     // Misc
     selectPayMethod, showModal, closeModal, closeModalOutside,
-    showConfidenceDetail, toast,
-    showLoading, hideLoading
+    showConfidenceDetail, toast, showLoading, hideLoading
   };
 })();
