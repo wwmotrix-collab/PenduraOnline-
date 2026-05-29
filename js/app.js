@@ -351,7 +351,8 @@ const App = (() => {
       ? `Encontramos sua pendura em ${results.length} comércios`
       : 'Encontramos sua pendura!';
 
-    list.innerHTML = results.map(({ customer, merchant, ledger }) => {
+    S.merchantPickerResults = results;
+    list.innerHTML = results.map(({ customer, merchant, ledger }, idx) => {
       const profile    = MerchantProfile.load(merchant?.id) ||
                          MerchantProfile.createFromMerchant(merchant || {});
       const mName      = MerchantProfile.displayName(profile);
@@ -364,7 +365,7 @@ const App = (() => {
       const custId     = encodeURIComponent(JSON.stringify({ customer, merchant, ledger }));
 
       return `<div class="merchant-picker-card"
-                   onclick="App._pickMerchant('${custId}')">
+                   onclick="App.pickMerchantByIndex(${idx})">
         <div class="mpc-avatar">${initials}</div>
         <div class="mpc-info">
           <h4>${mName}</h4>
@@ -377,7 +378,22 @@ const App = (() => {
     showScreen('merchant-picker');
   }
 
-  async function _pickMerchant(jsonStr) {
+  
+async function pickMerchantByIndex(index) {
+  try {
+    const item = S.merchantPickerResults?.[Number(index)];
+    if (!item) {
+      toast('❌ Pendura não encontrada', 'error');
+      return;
+    }
+    await _enterCustomer(item.customer, item.merchant, item.ledger);
+  } catch (e) {
+    console.error(e);
+    toast('❌ Erro ao abrir pendura', 'error');
+  }
+}
+
+async function _pickMerchant(jsonStr) {
     const { customer, merchant, ledger } = JSON.parse(decodeURIComponent(jsonStr));
     await _enterCustomer(customer, merchant, ledger);
   }
@@ -1299,7 +1315,22 @@ const App = (() => {
   }
 
   // ── SELETOR DE COMÉRCIO ───────────────────────────
-  async function _pickMerchant(jsonStr) {
+  
+async function pickMerchantByIndex(index) {
+  try {
+    const item = S.merchantPickerResults?.[Number(index)];
+    if (!item) {
+      toast('❌ Pendura não encontrada', 'error');
+      return;
+    }
+    await _enterCustomer(item.customer, item.merchant, item.ledger);
+  } catch (e) {
+    console.error(e);
+    toast('❌ Erro ao abrir pendura', 'error');
+  }
+}
+
+async function _pickMerchant(jsonStr) {
     try {
       const { customer, merchant, ledger } = JSON.parse(decodeURIComponent(jsonStr));
       await _enterCustomer(customer, merchant, ledger);
@@ -1345,7 +1376,7 @@ const App = (() => {
     // Foto / Anexo
     handlePhotoSelected, removePhoto, viewPhoto,
     // Seletor de comércio
-    _pickMerchant,
+    pickMerchantByIndex, _pickMerchant,
     // Misc
     selectPayMethod, showModal, closeModal, closeModalOutside,
     showConfidenceDetail, toast,
