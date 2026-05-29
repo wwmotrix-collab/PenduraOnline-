@@ -153,11 +153,10 @@
 </div>
 
 <!-- ══════════════════════════════════════
-     TELA: DASHBOARD COMERCIANTE (V2.1)
+     TELA: DASHBOARD COMERCIANTE
 ════════════════════════════════════════ -->
 <div id="screen-merchant-dashboard" class="screen hidden">
 
-  <!-- Header glassmorphism -->
   <div class="dash-header">
     <div class="dh-left">
       <div class="dh-avatar" id="merchant-avatar-initials">M</div>
@@ -174,7 +173,6 @@
 
   <div class="scroll-area dash-scroll">
 
-    <!-- Cards resumo -->
     <div class="metric-row">
       <div class="metric-card metric-hero">
         <p class="mc-label">Total em aberto</p>
@@ -197,7 +195,7 @@
         <h3 class="mc-value-sm" id="today-payments">R$ 0</h3>
         <p class="mc-sub">recebido</p>
       </div>
-      <div class="metric-card metric-sm metric-accent-gold" onclick="App.showScreen('calendar')">
+      <div class="metric-card metric-sm metric-accent-gold" onclick="App.showCalendarScreen()">
         <p class="mc-label">Próx.</p>
         <h3 class="mc-value-sm" id="next-due-count">—</h3>
         <p class="mc-sub">vencimentos</p>
@@ -210,7 +208,8 @@
         <span class="qb-icon">👤</span>
         <span>Novo Cliente</span>
       </button>
-      <button class="quick-btn qb-secondary" onclick="App.showQuickLaunch('purchase')">
+      <!-- FIX: usa openPurchaseFromDashboard em vez de showQuickLaunch -->
+      <button class="quick-btn qb-secondary" onclick="App.openPurchaseFromDashboard()">
         <span class="qb-icon">➕</span>
         <span>Lançar Compra</span>
       </button>
@@ -218,13 +217,12 @@
         <span class="qb-icon">💰</span>
         <span>Pagamento</span>
       </button>
-      <button class="quick-btn qb-neutral" onclick="App.showScreen('calendar')">
+      <button class="quick-btn qb-neutral" onclick="App.showCalendarScreen()">
         <span class="qb-icon">📅</span>
         <span>Calendário</span>
       </button>
     </div>
 
-    <!-- Clientes -->
     <div class="section-row">
       <h3 class="section-title">Clientes</h3>
       <div class="search-inline">
@@ -268,8 +266,6 @@
         </div>
         <span class="field-hint">Para confirmações e notificações</span>
       </div>
-
-      <!-- Limite de crédito -->
       <div class="limit-section">
         <div class="limit-toggle-row">
           <span class="limit-label">💳 Definir limite de crédito</span>
@@ -295,14 +291,13 @@
           </div>
         </div>
       </div>
-
       <button class="btn-cta" onclick="App.createCustomer()">Adicionar à caderneta 📒</button>
     </div>
   </div>
 </div>
 
 <!-- ══════════════════════════════════════
-     TELA: CANAL PRIVADO / LEDGER (V2.1)
+     TELA: CANAL PRIVADO / LEDGER
 ════════════════════════════════════════ -->
 <div id="screen-ledger" class="screen hidden">
 
@@ -315,13 +310,10 @@
     <button class="tb-icon-btn" onclick="App.openWhatsAppCustomer()" title="WhatsApp">💬</button>
   </div>
 
-  <!-- Painel de saldo hero -->
   <div class="ledger-hero" id="ledger-hero">
     <div class="lh-balance-wrap">
       <p class="lh-label" id="balance-label-text">Saldo devedor</p>
       <div class="lh-amount" id="ledger-balance">R$ 0,00</div>
-
-      <!-- Barra de limite -->
       <div class="limit-bar-wrap hidden" id="ledger-limit-bar">
         <div class="limit-bar-track">
           <div class="limit-bar-fill" id="limit-bar-fill"></div>
@@ -332,21 +324,18 @@
         </div>
       </div>
     </div>
-
-    <!-- Confiança comercial pill -->
     <div class="confidence-pill" id="confidence-pill" onclick="App.showConfidenceDetail()">
       <span class="cp-icon">🤝</span>
       <span class="cp-value" id="confidence-value">—</span>
       <span class="cp-label" id="confidence-label">calculando</span>
     </div>
-
     <div class="lh-actions">
-      <button class="lh-btn lh-btn-buy" onclick="App.showQuickLaunch('purchase')">➕ Compra</button>
+      <!-- FIX: usa _preparePurchaseModal com cliente do contexto -->
+      <button class="lh-btn lh-btn-buy" onclick="App._preparePurchaseModal(App.currentCustomerId())">➕ Compra</button>
       <button class="lh-btn lh-btn-pay" onclick="App.showModal('modal-payment')">💰 Pagamento</button>
     </div>
   </div>
 
-  <!-- WA quick bar -->
   <div class="wa-bar">
     <button class="wa-chip" onclick="App.sendWhatsAppConfirmation()">📨 Pedir confirmação</button>
     <button class="wa-chip" onclick="App.sendWhatsAppBalance()">📊 Enviar saldo</button>
@@ -354,13 +343,11 @@
     <button class="wa-chip" onclick="App.sendWhatsAppReminder()">⏰ Lembrete amigável</button>
   </div>
 
-  <!-- Tabs de conteúdo -->
   <div class="ledger-tabs">
     <button class="lt-tab active" data-ltab="history" onclick="App.switchLedgerTab('history', this)">Histórico</button>
     <button class="lt-tab" data-ltab="insight" onclick="App.switchLedgerTab('insight', this)">Relacionamento</button>
   </div>
 
-  <!-- Tab: Histórico -->
   <div id="ltab-history" class="scroll-area ledger-scroll">
     <div class="filter-chips">
       <button class="fc active" onclick="App.filterLedger('all', this)">Todos</button>
@@ -373,39 +360,25 @@
     </div>
   </div>
 
-  <!-- Tab: Relacionamento -->
   <div id="ltab-insight" class="scroll-area ledger-scroll hidden">
-    <div class="insight-grid" id="insight-grid">
-      <!-- Preenchido por JS -->
-    </div>
-
-    <!-- Confiança com histórico -->
+    <div class="insight-grid" id="insight-grid"></div>
     <div class="confidence-card" id="confidence-card">
-      <div class="cc-header">
-        <span>🤝</span>
-        <h3>Confiança Comercial</h3>
-      </div>
+      <div class="cc-header"><span>🤝</span><h3>Confiança Comercial</h3></div>
       <div class="cc-score-row">
         <div class="cc-percent" id="cc-percent">—</div>
         <div class="cc-badge" id="cc-badge">calculando</div>
       </div>
-      <div class="cc-bar-track">
-        <div class="cc-bar-fill" id="cc-bar-fill" style="width:0%"></div>
-      </div>
+      <div class="cc-bar-track"><div class="cc-bar-fill" id="cc-bar-fill" style="width:0%"></div></div>
       <div class="cc-evolution" id="cc-evolution"></div>
     </div>
-
-    <!-- Streaks -->
     <div id="streaks-section" class="streaks-section"></div>
-
-    <!-- Badges -->
     <div id="badges-section" class="badges-section"></div>
   </div>
 
 </div>
 
 <!-- ══════════════════════════════════════
-     TELA: DASHBOARD CLIENTE (V2.1)
+     TELA: DASHBOARD CLIENTE
 ════════════════════════════════════════ -->
 <div id="screen-customer-dashboard" class="screen hidden">
 
@@ -420,28 +393,22 @@
     <button class="tb-icon-btn" onclick="App.logout()">⬅️</button>
   </div>
 
-  <!-- Herói de saldo cliente -->
   <div class="customer-hero">
     <p class="ch-label">Minha pendura em</p>
     <h3 class="ch-merchant" id="customer-merchant-name">—</h3>
     <div class="ch-amount" id="customer-balance">R$ 0,00</div>
     <p class="ch-status" id="customer-balance-status">carregando...</p>
-
-    <!-- Barra de progresso de quitação -->
     <div class="ch-progress-wrap" id="ch-progress-wrap" style="display:none">
       <div class="ch-progress-track">
         <div class="ch-progress-fill" id="ch-progress-fill"></div>
       </div>
       <p class="ch-progress-label" id="ch-progress-label"></p>
     </div>
-
-    <!-- Badge de confiança do cliente -->
     <div class="ch-confidence" id="ch-confidence" style="display:none">
       <span id="ch-conf-badge">🤝 Parceiro de Confiança</span>
     </div>
   </div>
 
-  <!-- Alerta de pendências -->
   <div id="customer-pending-section" class="pending-alert-bar hidden">
     <span>⚠️</span>
     <p id="customer-pending-count">1 lançamento aguardando confirmação</p>
@@ -449,13 +416,10 @@
 
   <div class="scroll-area cust-scroll">
     <div id="customer-pending-list"></div>
-
-    <!-- Insights do cliente -->
     <div class="cust-insights" id="cust-insights" style="display:none">
       <div class="ci-card" id="ci-streak"></div>
       <div class="ci-card" id="ci-since"></div>
     </div>
-
     <div class="section-row">
       <h3 class="section-title">Meu histórico</h3>
     </div>
@@ -470,7 +434,7 @@
 </div>
 
 <!-- ══════════════════════════════════════
-     TELA: CALENDÁRIO (V2.1)
+     TELA: CALENDÁRIO
 ════════════════════════════════════════ -->
 <div id="screen-calendar" class="screen hidden">
   <div class="topbar">
@@ -498,7 +462,9 @@
 </div>
 
 <!-- ══════════════════════════════════════
-     MODAL: LANÇAR COMPRA (V2.1)
+     MODAL: LANÇAR COMPRA (UNIFICADO)
+     Usado tanto pelo dashboard quanto pelo perfil do cliente.
+     O campo Cliente é mostrado/ocultado via JS conforme o contexto.
 ════════════════════════════════════════ -->
 <div id="modal-purchase" class="modal-overlay hidden" onclick="App.closeModalOutside(event,'modal-purchase')">
   <div class="modal-sheet">
@@ -508,21 +474,27 @@
       <button class="modal-x" onclick="App.closeModal('modal-purchase')">✕</button>
     </div>
     <div class="modal-body">
+
+      <!-- Campo Cliente — visível ao abrir pelo dashboard, oculto no perfil do cliente -->
+      <!-- Este div é criado/gerenciado dinamicamente pelo JS (_preparePurchaseModal) -->
+      <!-- mas deixamos o placeholder aqui para clareza -->
+
       <div class="field-group">
         <label>Valor</label>
         <div class="field-amount">
           <span class="fa-prefix">R$</span>
-          <input type="number" id="purchase-amount" placeholder="0,00" step="0.01" min="0.01" inputmode="decimal">
+          <input type="number" id="purchase-amount" placeholder="0,00" step="0.01" min="0.01"
+                 inputmode="decimal" oninput="App.updatePurchaseWaPreview()">
         </div>
       </div>
       <div class="field-group">
         <label>Descrição (opcional)</label>
         <div class="field-input">
           <span class="fi-icon">📝</span>
-          <input type="text" id="purchase-desc" placeholder="mercado, pão, fiado..." autocomplete="off">
+          <input type="text" id="purchase-desc" placeholder="mercado, pão, fiado..."
+                 autocomplete="off" oninput="App.updatePurchaseWaPreview()">
         </div>
       </div>
-      <!-- Data prevista de pagamento -->
       <div class="field-group">
         <label>Prazo de pagamento (opcional)</label>
         <div class="field-input">
@@ -530,11 +502,9 @@
           <input type="date" id="purchase-due-date">
         </div>
       </div>
-      <!-- Foto / comprovante -->
       <div class="field-group">
         <label>Foto / comprovante (opcional)</label>
-        <!-- Dois inputs separados: câmera e galeria -->
-        <input type="file" id="purchase-photo-camera"  accept="image/*" capture="environment"
+        <input type="file" id="purchase-photo-camera" accept="image/*" capture="environment"
                style="display:none" onchange="App.handlePhotoSelected(this)">
         <input type="file" id="purchase-photo-gallery" accept="image/*"
                style="display:none" onchange="App.handlePhotoSelected(this)">
@@ -548,14 +518,12 @@
             <span>🖼️</span> Galeria
           </button>
         </div>
-        <!-- Preview da imagem selecionada -->
         <div id="photo-preview-wrap" class="photo-preview-wrap hidden">
           <img id="photo-preview-img" class="photo-preview-img" src="" alt="Preview">
           <button class="photo-remove-btn" type="button" onclick="App.removePhoto()" title="Remover foto">✕</button>
           <p class="photo-preview-name" id="photo-preview-name"></p>
         </div>
       </div>
-      <!-- Preview WA -->
       <div class="wa-preview-box" id="purchase-wa-preview">
         <div class="wa-preview-header"><span>💬</span><p>Mensagem para o cliente</p></div>
         <div class="wa-bubble" id="purchase-wa-bubble">
@@ -570,7 +538,7 @@
 </div>
 
 <!-- ══════════════════════════════════════
-     MODAL: REGISTRAR PAGAMENTO (V2.1)
+     MODAL: REGISTRAR PAGAMENTO
 ════════════════════════════════════════ -->
 <div id="modal-payment" class="modal-overlay hidden" onclick="App.closeModalOutside(event,'modal-payment')">
   <div class="modal-sheet">
@@ -584,10 +552,10 @@
         <label>Valor pago</label>
         <div class="field-amount">
           <span class="fa-prefix">R$</span>
-          <input type="number" id="payment-amount" placeholder="0,00" step="0.01" min="0.01" inputmode="decimal" oninput="App.updatePaymentPreview()">
+          <input type="number" id="payment-amount" placeholder="0,00" step="0.01" min="0.01"
+                 inputmode="decimal" oninput="App.updatePaymentPreview()">
         </div>
       </div>
-      <!-- Partial payment visual -->
       <div class="partial-preview" id="partial-preview" style="display:none">
         <div class="pp-track"><div class="pp-fill" id="pp-fill"></div></div>
         <p class="pp-label" id="pp-label">Saldo restante: R$ 0,00</p>
@@ -662,13 +630,13 @@
 </div>
 
 <!-- ══════════════════════════════════════
-     MODAL: QUICK LAUNCH
+     MODAL: QUICK LAUNCH (apenas pagamento agora)
 ════════════════════════════════════════ -->
 <div id="modal-quick-launch" class="modal-overlay hidden" onclick="App.closeModalOutside(event,'modal-quick-launch')">
   <div class="modal-sheet">
     <div class="modal-handle"></div>
     <div class="modal-header">
-      <h3 id="quick-launch-title">Lançar Compra</h3>
+      <h3 id="quick-launch-title">Registrar Pagamento</h3>
       <button class="modal-x" onclick="App.closeModal('modal-quick-launch')">✕</button>
     </div>
     <div class="modal-body">
@@ -682,40 +650,22 @@
         <label>Valor (R$)</label>
         <div class="field-amount">
           <span class="fa-prefix">R$</span>
-          <input type="number" id="quick-amount" placeholder="0,00" step="0.01" min="0.01" inputmode="decimal" oninput="App.updateQuickWaPreview()">
+          <input type="number" id="quick-amount" placeholder="0,00" step="0.01" min="0.01"
+                 inputmode="decimal" oninput="App.updateQuickWaPreview()">
         </div>
       </div>
       <div class="field-group">
         <label>Descrição (opcional)</label>
         <div class="field-input">
           <span class="fi-icon">📝</span>
-          <input type="text" id="quick-desc" placeholder="mercado, fiado..." autocomplete="off">
+          <input type="text" id="quick-desc" placeholder="pagamento..." autocomplete="off">
         </div>
       </div>
-      
-<div class="field-group">
-  <label>Prazo de pagamento (opcional)</label>
-  <div class="field-input">
-    <span class="fi-icon">📅</span>
-    <input type="date" id="quick-due-date">
-  </div>
-</div>
-
-<div class="field-group">
-  <label>Foto / comprovante (opcional)</label>
-  <input type="file" id="quick-photo-camera" accept="image/*" capture="environment" style="display:none" onchange="App.handlePhotoSelected(this)">
-  <input type="file" id="quick-photo-gallery" accept="image/*" style="display:none" onchange="App.handlePhotoSelected(this)">
-  <div class="attach-btns-row">
-    <button class="attach-btn" type="button" onclick="document.getElementById('quick-photo-camera').click()"><span>📷</span> Tirar foto</button>
-    <button class="attach-btn" type="button" onclick="document.getElementById('quick-photo-gallery').click()"><span>🖼️</span> Galeria</button>
-  </div>
-</div>
-
-<div class="wa-preview-box">
+      <div class="wa-preview-box">
         <div class="wa-preview-header"><span>💬</span><p>Preview WhatsApp</p></div>
         <div class="wa-bubble" id="quick-wa-bubble"><p>Selecione um cliente...</p></div>
       </div>
-      <button class="btn-cta" onclick="App.submitQuickLaunch()">Lançar e notificar 💬</button>
+      <button class="btn-cta btn-cta-green" onclick="App.submitQuickLaunch()">Registrar e notificar 💬</button>
     </div>
   </div>
 </div>
@@ -777,7 +727,6 @@
           <input type="text" id="profile-address" placeholder="Rua, número, bairro..." autocomplete="street-address">
         </div>
       </div>
-      <!-- Preview WA -->
       <div class="wa-preview-box">
         <div class="wa-preview-header"><span>💬</span><p>Como aparece nas mensagens</p></div>
         <div class="wa-bubble">
@@ -802,14 +751,12 @@
       <h3>🤝 Confiança Comercial</h3>
       <button class="modal-x" onclick="App.closeModal('modal-confidence')">✕</button>
     </div>
-    <div class="modal-body" id="confidence-modal-body">
-      <!-- Preenchido por JS -->
-    </div>
+    <div class="modal-body" id="confidence-modal-body"></div>
   </div>
 </div>
 
 <!-- ══════════════════════════════════════
-     TELA: SELEÇÃO DE COMÉRCIO (cliente com múltiplos)
+     TELA: SELEÇÃO DE COMÉRCIO (multi-merchant)
 ════════════════════════════════════════ -->
 <div id="screen-merchant-picker" class="screen hidden">
   <div class="topbar">
@@ -822,12 +769,13 @@
       <div class="hero-icon-wrap">📒</div>
       <p id="picker-found-text">Encontramos sua pendura em mais de um comércio</p>
     </div>
+    <!-- Os cards são injetados aqui pelo JS (_showMerchantPicker) -->
     <div id="merchant-picker-list" class="customers-list"></div>
   </div>
 </div>
 
 <!-- ══════════════════════════════════════
-     MODAL: VISUALIZAR FOTO DA COMPRA
+     MODAL: VISUALIZAR FOTO
 ════════════════════════════════════════ -->
 <div id="modal-photo-view" class="modal-overlay hidden" onclick="App.closeModalOutside(event,'modal-photo-view')">
   <div class="modal-sheet">
@@ -844,18 +792,10 @@
 </div>
 
 <!-- ══════════════════════════════════════
-     CANVAS DE MICROINTERAÇÕES
+     CANVAS / TOAST / LOADING
 ════════════════════════════════════════ -->
 <canvas id="fx-canvas" class="fx-canvas" aria-hidden="true"></canvas>
-
-<!-- ══════════════════════════════════════
-     TOAST CONTAINER
-════════════════════════════════════════ -->
 <div id="toast-container" class="toast-container"></div>
-
-<!-- ══════════════════════════════════════
-     LOADING OVERLAY
-════════════════════════════════════════ -->
 <div id="loading-overlay" class="loading-overlay hidden">
   <div class="loading-box">
     <div class="loading-ring"></div>
@@ -864,7 +804,7 @@
 </div>
 
 <!-- ══════════════════════════════════════
-     SCRIPTS — ordem importa
+     SCRIPTS
 ════════════════════════════════════════ -->
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
 <script src="js/config.js"></script>
