@@ -837,7 +837,14 @@ const App = (() => {
 
     S.customer = c; S.ledger = l;
     showLoading(type === 'purchase' ? 'Lançando...' : 'Registrando...');
-    const { data: tx, error } = await dbCreateTransaction(l.id, type, amount, desc, 'merchant');
+    const { data: tx, error } = const { data: tx, error: txError } = await dbCreateTransaction(l.id, type, amount, desc, 'merchant', due);
+  if (txError) { hideLoading(); toast('❌ ' + (txError.message || 'Erro ao lançar'), 'error'); return; }
+  if (tx && S.photoFile) {
+    try {
+      const url = await dbSaveAttachment(tx.id, S.photoFile);
+      if (url) await dbUpdateTransactionAttachment(tx.id, url);
+    } catch(e) { console.warn('Foto não salva:', e); }
+  }
     if (error) { hideLoading(); toast('❌ Erro', 'error'); return; }
 
     if (type === 'payment') {

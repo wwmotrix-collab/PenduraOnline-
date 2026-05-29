@@ -210,7 +210,7 @@
         <span class="qb-icon">👤</span>
         <span>Novo Cliente</span>
       </button>
-      <button class="quick-btn qb-secondary" onclick="App.openPurchaseFromDashboard()">
+      <button class="quick-btn qb-secondary" onclick="App.showQuickLaunch('purchase')">
         <span class="qb-icon">➕</span>
         <span>Lançar Compra</span>
       </button>
@@ -341,7 +341,7 @@
     </div>
 
     <div class="lh-actions">
-      <button class="lh-btn lh-btn-buy" onclick="App.openPurchaseFromDashboard()">➕ Compra</button>
+      <button class="lh-btn lh-btn-buy" onclick="App.showQuickLaunch('purchase')">➕ Compra</button>
       <button class="lh-btn lh-btn-pay" onclick="App.showModal('modal-payment')">💰 Pagamento</button>
     </div>
   </div>
@@ -692,7 +692,26 @@
           <input type="text" id="quick-desc" placeholder="mercado, fiado..." autocomplete="off">
         </div>
       </div>
-      <div class="wa-preview-box">
+      
+<div class="field-group">
+  <label>Prazo de pagamento (opcional)</label>
+  <div class="field-input">
+    <span class="fi-icon">📅</span>
+    <input type="date" id="quick-due-date">
+  </div>
+</div>
+
+<div class="field-group">
+  <label>Foto / comprovante (opcional)</label>
+  <input type="file" id="quick-photo-camera" accept="image/*" capture="environment" style="display:none" onchange="App.handlePhotoSelected(this)">
+  <input type="file" id="quick-photo-gallery" accept="image/*" style="display:none" onchange="App.handlePhotoSelected(this)">
+  <div class="attach-btns-row">
+    <button class="attach-btn" type="button" onclick="document.getElementById('quick-photo-camera').click()"><span>📷</span> Tirar foto</button>
+    <button class="attach-btn" type="button" onclick="document.getElementById('quick-photo-gallery').click()"><span>🖼️</span> Galeria</button>
+  </div>
+</div>
+
+<div class="wa-preview-box">
         <div class="wa-preview-header"><span>💬</span><p>Preview WhatsApp</p></div>
         <div class="wa-bubble" id="quick-wa-bubble"><p>Selecione um cliente...</p></div>
       </div>
