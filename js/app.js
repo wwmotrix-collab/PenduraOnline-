@@ -352,6 +352,7 @@ const App = (() => {
       : 'Encontramos sua pendura!';
 
     S.merchantPickerResults = results;
+    window.PENDURA_PICKER_RESULTS = results;
     list.innerHTML = results.map(({ customer, merchant, ledger }, idx) => {
       const profile    = MerchantProfile.load(merchant?.id) ||
                          MerchantProfile.createFromMerchant(merchant || {});
@@ -381,7 +382,8 @@ const App = (() => {
   
 async function pickMerchantByIndex(index) {
   try {
-    const item = S.merchantPickerResults?.[Number(index)];
+    const list = window.PENDURA_PICKER_RESULTS || S.merchantPickerResults || [];
+    const item = list[Number(index)];
     if (!item) {
       toast('❌ Pendura não encontrada', 'error');
       return;
@@ -389,7 +391,7 @@ async function pickMerchantByIndex(index) {
     await _enterCustomer(item.customer, item.merchant, item.ledger);
   } catch (e) {
     console.error(e);
-    toast('❌ Erro ao abrir pendura', 'error');
+    toast('❌ ' + (e.message || 'Erro ao abrir pendura'), 'error');
   }
 }
 
@@ -1318,7 +1320,8 @@ async function _pickMerchant(jsonStr) {
   
 async function pickMerchantByIndex(index) {
   try {
-    const item = S.merchantPickerResults?.[Number(index)];
+    const list = window.PENDURA_PICKER_RESULTS || S.merchantPickerResults || [];
+    const item = list[Number(index)];
     if (!item) {
       toast('❌ Pendura não encontrada', 'error');
       return;
@@ -1326,7 +1329,7 @@ async function pickMerchantByIndex(index) {
     await _enterCustomer(item.customer, item.merchant, item.ledger);
   } catch (e) {
     console.error(e);
-    toast('❌ Erro ao abrir pendura', 'error');
+    toast('❌ ' + (e.message || 'Erro ao abrir pendura'), 'error');
   }
 }
 
@@ -1334,7 +1337,7 @@ async function _pickMerchant(jsonStr) {
     try {
       const { customer, merchant, ledger } = JSON.parse(decodeURIComponent(jsonStr));
       await _enterCustomer(customer, merchant, ledger);
-    } catch(e) { toast('❌ Erro ao abrir pendura', 'error'); }
+    } catch(e) { toast('❌ ' + (e.message || 'Erro ao abrir pendura'), 'error'); }
   }
 
   // ── HINT DE LOGIN CLIENTE ─────────────────────────
