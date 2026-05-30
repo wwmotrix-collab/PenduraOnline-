@@ -1,5 +1,5 @@
 // PENDURA v2.1 — SERVICE WORKER
-const CACHE = 'pendura-v2.1.4-login-fix';
+const CACHE = 'pendura-v2.1.5-login-fix';
 const ASSETS = [
   '/', '/index.html',
   '/css/main.css',

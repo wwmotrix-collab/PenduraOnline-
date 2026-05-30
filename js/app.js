@@ -155,12 +155,25 @@ const App = (() => {
     if (!name) { toast('🏪 Nome obrigatório', 'error'); return; }
     if (!phone || phone.length < 10) { toast('📱 Telefone inválido', 'error'); return; }
     if (!password || password.length < 4) { toast('🔑 Mínimo 4 caracteres', 'error'); return; }
+
     showLoading('Criando caderneta...');
-    const { data: m, error } = await dbCreateMerchant(name, phone, simpleHash(password));
-    hideLoading();
-    if (error) { toast('❌ Erro. Tente outro telefone.', 'error'); return; }
-    toast('🎉 Caderneta criada!', 'success');
-    await _enterMerchant(m);
+    try {
+      const { data: m, error } = await dbCreateMerchant(name, phone, simpleHash(password));
+      if (error || !m) {
+        console.error('[Pendura] registerMerchant:', error);
+        hideLoading();
+        toast('❌ Erro ao criar caderneta. Verifique o telefone ou tente novamente.', 'error');
+        return;
+      }
+
+      hideLoading();
+      toast('🎉 Caderneta criada!', 'success');
+      await _enterMerchant(m);
+    } catch (e) {
+      console.error('[Pendura] registerMerchant:', e);
+      hideLoading();
+      toast('❌ Erro ao criar caderneta. Recarregue e tente novamente.', 'error');
+    }
   }
 
   // ── SESSÕES ──────────────────────────────────────
