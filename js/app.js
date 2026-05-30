@@ -86,36 +86,66 @@ const App = (() => {
     const password = _val('merchant-password');
     if (!phone || phone.length < 10) { toast('📱 Telefone inválido', 'error'); return; }
     if (!password || password.length < 4) { toast('🔑 Mínimo 4 caracteres', 'error'); return; }
+
     showLoading('Entrando...');
-    if (DEMO_MODE) {
-      await _sleep(500);
-      let m = DB.merchant;
-      if (!m || m.phone !== phone) { m = { id: 'demo-' + phone, name: '', phone, created_at: new Date().toISOString() }; DB.merchant = m; }
-      hideLoading(); await _enterMerchant(m); return;
+    try {
+      if (DEMO_MODE) {
+        await _sleep(500);
+        let m = DB.merchant;
+        if (!m || m.phone !== phone) { m = { id: 'demo-' + phone, name: '', phone, created_at: new Date().toISOString() }; DB.merchant = m; }
+        hideLoading();
+        await _enterMerchant(m);
+        return;
+      }
+
+      const { data: m, error } = await dbGetMerchantByPhone(phone);
+      if (!m || error) {
+        hideLoading();
+        toast('❌ Comerciante não encontrado', 'error');
+        return;
+      }
+      if (m.password_hash !== simpleHash(password)) {
+        hideLoading();
+        toast('❌ Senha incorreta', 'error');
+        return;
+      }
+
+      hideLoading();
+      await _enterMerchant(m);
+    } catch (e) {
+      console.error('[Pendura] loginMerchant:', e);
+      hideLoading();
+      toast('❌ Erro ao entrar. Recarregue e tente novamente.', 'error');
     }
-    const { data: m, error } = await dbGetMerchantByPhone(phone);
-    hideLoading();
-    if (!m || error) { toast('❌ Comerciante não encontrado', 'error'); return; }
-    if (m.password_hash !== simpleHash(password)) { toast('❌ Senha incorreta', 'error'); return; }
-    await _enterMerchant(m);
   }
 
   async function loginCustomer() {
     const phone = normalizePhone(_val('customer-phone'));
     if (!phone || phone.length < 10) { toast('📱 Digite seu telefone', 'error'); return; }
+
     const hint = document.getElementById('customer-login-hint');
     if (hint) hint.style.display = 'none';
+
     showLoading('Buscando sua pendura...');
-    if (DEMO_MODE && (!DB.merchant || !DB.customers.length)) seedDemo(DB.merchant?.id || 'demo-merchant-default');
-    const { data: results, error } = await dbFindCustomerByPhone(phone);
-    hideLoading();
-    if (error || !results || results.length === 0) {
-      toast('❌ Nenhuma pendura encontrada', 'error');
-      if (hint) { hint.textContent = 'Nenhuma pendura encontrada. Peça ao comerciante um link de acesso.'; hint.style.display = 'block'; }
-      return;
+    try {
+      if (DEMO_MODE && (!DB.merchant || !DB.customers.length)) seedDemo(DB.merchant?.id || 'demo-merchant-default');
+
+      const { data: results, error } = await dbFindCustomerByPhone(phone);
+      if (error || !results || results.length === 0) {
+        hideLoading();
+        toast('❌ Nenhuma pendura encontrada', 'error');
+        if (hint) { hint.textContent = 'Nenhuma pendura encontrada. Peça ao comerciante um link de acesso.'; hint.style.display = 'block'; }
+        return;
+      }
+
+      hideLoading();
+      if (results.length === 1) await _enterCustomer(results[0].customer, results[0].merchant, results[0].ledger);
+      else _showMerchantPicker(results);
+    } catch (e) {
+      console.error('[Pendura] loginCustomer:', e);
+      hideLoading();
+      toast('❌ Erro ao buscar sua pendura. Recarregue e tente novamente.', 'error');
     }
-    if (results.length === 1) { await _enterCustomer(results[0].customer, results[0].merchant, results[0].ledger); }
-    else { _showMerchantPicker(results); }
   }
 
   async function registerMerchant() {
@@ -135,6 +165,7 @@ const App = (() => {
 
   // ── SESSÕES ──────────────────────────────────────
   async function _enterMerchant(merchant) {
+    hideLoading();
     let profile = MerchantProfile.load(merchant.id);
     if (!profile) {
       profile = MerchantProfile.createFromMerchant(merchant);
